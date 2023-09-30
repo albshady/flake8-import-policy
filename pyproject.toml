@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "flake8-import-policy"
+version = "0.1.0"
+description = "Flake8 plugin to validate that code follows import policies"
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+flake8 = ">=3.7"
+isort = ">=1"
+
+[tool.poetry.plugins."flake8.extension"]
+"FNA" = "flake8_import_policy:Plugin"
+
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.9.1"
+mypy = "^1.5.1"
+pre-commit = "^3.4.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
