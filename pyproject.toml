@@ -20,6 +20,19 @@ mypy = "^1.5.1"
 pre-commit = "^3.4.0"
 pytest = "^7.4.2"
 
+[tool.black]
+skip-string-normalization = true
+
+[tool.isort]
+profile = "black"
+lines_after_imports = 2
+
+[tool.mypy]
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+disallow_untyped_calls = true
+warn_unused_ignores = true
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
