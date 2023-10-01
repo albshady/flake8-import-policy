@@ -30,14 +30,12 @@ skip-string-normalization = true
 profile = "black"
 lines_after_imports = 2
 
-[tool.flake8]
-ignore = ["E501", "W503"]
-
 [tool.flake8-import-policy]
 stdlib = ["absolute"]
 third-party = ["absolute", "from_module"]
 local = ["absolute", "from_module"]
-sibling = ["from_module"]
+relative = ["from_module"]
+relative-max-level = 1
 
 [tool.flake8-import-policy.overrides]
 datetime = ["from_member"]
