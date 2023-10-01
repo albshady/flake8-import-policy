@@ -75,3 +75,24 @@ def test_forbid_module_member_import():
     errors = get_errors(code)
     assert len(errors) == 1
     assert "FIP003" in errors[0][2]
+
+
+def test_relative_module_import():
+    code = textwrap.dedent(
+        """
+        from .local_package import module
+        """
+    )
+    errors = get_errors(code)
+    assert not errors
+
+
+def test_forbid_import_member_from_relative_module():
+    code = textwrap.dedent(
+        """
+        from .local_package import member
+        """
+    )
+    errors = get_errors(code)
+    assert len(errors) == 1
+    assert "FIP003" in errors[0][2]
