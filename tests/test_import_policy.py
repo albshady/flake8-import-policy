@@ -15,7 +15,7 @@ def get_default_config():
 
 def get_errors(
     code: str,
-    filename: str = 'module.py',
+    filename: str = 'tests/test_import_policy.py',
     plugin_config: config.Config | None = None,
 ) -> set[str]:
     tree = ast.parse(code)
@@ -27,7 +27,7 @@ def get_errors(
 
 def test_correct_stdlib_import():
     code = textwrap.dedent(
-        """
+        """\
         import asyncio
         import time
         import typing
@@ -45,7 +45,7 @@ def test_stdlib_import_policy_violation():
 
 def test_correct_third_party_import():
     code = textwrap.dedent(
-        """
+        """\
         import isort.main
         import pytest
         """
@@ -62,29 +62,40 @@ def test_third_party_import_policy_violation():
 
 def test_correct_local_module_import():
     code = textwrap.dedent(
-        """
+        """\
         import flake8_import_policy
+        import flake8_import_policy.plugin
         from flake8_import_policy import plugin
+        from flake8_import_policy import config, plugin
         """
     )
     errors = get_errors(code)
     assert not errors
 
 
-def test_forbid_module_member_import():
+def test_forbid_local_module_member_import():
     code = textwrap.dedent(
-        """
+        """\
         from flake8_import_policy import Plugin
         """
     )
     errors = get_errors(code)
-    assert len(errors) == 1
-    assert "1:0 FIP003 Do not import members from `flake8_import_policy`" in errors
+    assert errors == {"1:0 FIP003 first-party module import policy violation"}
+
+
+def test_forbid_import_member_when_importing_multiple_from_local_module():
+    code = textwrap.dedent(
+        """\
+        from flake8_import_policy import plugin, Plugin
+        """
+    )
+    errors = get_errors(code)
+    assert errors == {"1:0 FIP003 first-party module import policy violation"}
 
 
 def test_relative_module_import():
     code = textwrap.dedent(
-        """
+        """\
         from .local_package import module
         """
     )
@@ -94,10 +105,9 @@ def test_relative_module_import():
 
 def test_forbid_import_member_from_relative_module():
     code = textwrap.dedent(
-        """
+        """\
         from .local_package import member
         """
     )
     errors = get_errors(code)
-    assert len(errors) == 1
-    assert "1:0 FIP003 Do not import members from `local_package`" in errors
+    assert errors == {"1:0 FIP004 relative module import policy violation"}

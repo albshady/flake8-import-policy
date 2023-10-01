@@ -1,19 +1,20 @@
 import typing
 
 
+class SourceConfig(typing.NamedTuple):
+    allow_absolute: bool = False
+    allow_from_module: bool = False
+    allow_from_member: bool = False
+
+
 class Config(typing.NamedTuple):
-    allow_stdlib_absolute: bool = True
-    allow_stdlib_from_module: bool = False
-    allow_stdlib_from_member: bool = False
+    future: SourceConfig = SourceConfig(allow_absolute=True, allow_from_member=True)
+    stdlib: SourceConfig = SourceConfig(allow_absolute=True)
+    third_party: SourceConfig = SourceConfig(allow_absolute=True)
+    first_party: SourceConfig = SourceConfig(
+        allow_absolute=True, allow_from_module=True
+    )
 
-    allow_third_party_absolute: bool = True
-    allow_third_party_from_module: bool = False
-    allow_third_party_from_member: bool = False
-
-    allow_local_absolute: bool = True
-    allow_local_from_module: bool = True
-    allow_local_from_member: bool = False
-
+    max_relative_level: int = 1
     allow_relative_from_module: bool = True
     allow_relative_from_member: bool = False
-    max_relative_level: int = 1

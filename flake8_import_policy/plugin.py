@@ -1,30 +1,34 @@
 from __future__ import annotations
 
 import ast
-import sys
+import enum
+import importlib.metadata
 import typing
 
 import flake8.options.manager  # type: ignore[import]
 import isort
+import isort.sections
 
 from . import config
 
 
-if sys.version_info < (3, 8):
-    import importlib_metadata
-else:
-    import importlib.metadata as importlib_metadata
-
-
+FUTURE_IMPORT_VIOLATION = "FIP000 __future__ module import policy violation"
 STDLIB_IMPORT_VIOLATION = "FIP001 stdlib module import policy violation"
 THIRD_PARTY_IMPORT_VIOLATION = "FIP002 third-party module import policy violation"
 FIRST_PARTY_IMPORT_VIOLATION = "FIP003 first-party module import policy violation"
 RELATIVE_IMPORT_VIOLATION = "FIP004 relative module import policy violation"
 
 
+class SourceType(enum.Enum):
+    FUTURE = enum.auto()
+    STDLIB = enum.auto()
+    THIRD_PARTY = enum.auto()
+    FIRST_PARTY = enum.auto()
+
+
 class Plugin:
     name = __package__
-    version = importlib_metadata.version(__package__)
+    version = importlib.metadata.version(__package__)
 
     _config = config.Config()
 
@@ -34,6 +38,18 @@ class Plugin:
         self._tree = tree
         self._filename = filename
         self._config = plugin_config or self._config
+        self._config_by_source = {
+            SourceType.FUTURE: self._config.future,
+            SourceType.STDLIB: self._config.stdlib,
+            SourceType.THIRD_PARTY: self._config.third_party,
+            SourceType.FIRST_PARTY: self._config.first_party,
+        }
+        self._error_by_source = {
+            SourceType.FUTURE: FUTURE_IMPORT_VIOLATION,
+            SourceType.STDLIB: STDLIB_IMPORT_VIOLATION,
+            SourceType.THIRD_PARTY: THIRD_PARTY_IMPORT_VIOLATION,
+            SourceType.FIRST_PARTY: FIRST_PARTY_IMPORT_VIOLATION,
+        }
 
     @classmethod
     def add_options(cls, parser: flake8.options.manager.OptionManager) -> None:
@@ -128,157 +144,100 @@ class Plugin:
     @classmethod
     def parse_options(cls, options: flake8.options.manager.OptionManager) -> None:
         cls._config = config.Config(
-            allow_stdlib_absolute=not options.forbid_stdlib_absolute,
-            allow_stdlib_from_module=options.allow_stdlib_from_module,
-            allow_stdlib_from_member=options.allow_stdlib_from_member,
-            allow_third_party_absolute=not options.forbid_third_party_absolute,
-            allow_third_party_from_module=options.allow_third_party_from_module,
-            allow_third_party_from_member=options.allow_third_party_from_member,
-            allow_local_absolute=not options.forbid_local_absolute,
-            allow_local_from_module=not options.forbid_local_from_module,
-            allow_local_from_member=options.allow_local_from_member,
+            stdlib=config.SourceConfig(
+                allow_absolute=not options.forbid_stdlib_absolute,
+                allow_from_module=options.allow_stdlib_from_module,
+                allow_from_member=options.allow_stdlib_from_member,
+            ),
+            third_party=config.SourceConfig(
+                allow_absolute=not options.forbid_third_party_absolute,
+                allow_from_module=options.allow_third_party_from_module,
+                allow_from_member=options.allow_third_party_from_member,
+            ),
+            first_party=config.SourceConfig(
+                allow_absolute=not options.forbid_local_absolute,
+                allow_from_module=not options.forbid_local_from_module,
+                allow_from_member=options.allow_local_from_member,
+            ),
             max_relative_level=options.max_relative_level,
             allow_relative_from_module=not options.forbid_relative_from_module,
             allow_relative_from_member=options.allow_relative_from_member,
         )
 
     def run(self) -> typing.Iterator[tuple[int, int, str, type[Plugin]]]:
-        print(f"loaded {self._config=}")
         for node in ast.walk(self._tree):
-            if isinstance(node, (ast.Import, ast.ImportFrom)):
-                result = self.check_policy(node)
-                if result is not None:
-                    yield result
+            if isinstance(node, ast.Import):
+                errors = self._check_absolute_import(node)
+            elif isinstance(node, ast.ImportFrom):
+                errors = self._check_import_from(node)
+            else:
+                continue
+            for msg in errors:
+                yield (node.lineno, node.col_offset, msg, type(self))
 
-    def check_policy(
-        self, node: ast.Import | ast.ImportFrom
-    ) -> tuple[int, int, str, type[Plugin]] | None:
-        module_name = (
-            node.module if isinstance(node, ast.ImportFrom) else node.names[0].name
-        )
-        module_type = (
-            isort.place_module(module_name) if module_name is not None else "RELATIVE"
-        )
+    def _check_absolute_import(self, node: ast.Import) -> typing.Iterator[str]:
+        for imported_module in node.names:
+            module_name = imported_module.name
+            source_type = self._determine_source_type(module_name)
+            source_config = self._config_by_source[source_type]
+            if not source_config.allow_absolute:
+                yield self._error_by_source[source_type].format(module_name)
 
-        if isinstance(node, ast.ImportFrom) and node.level > 0:
-            return self._check_relative_import(node=node)
-        assert module_name is not None
-        if module_type == "FUTURE":
-            return None
-        elif module_type == "STDLIB":
-            if self._check_stdlib_import(node=node, module_name=module_name):
-                return None
-            return (
-                node.lineno,
-                node.col_offset,
-                STDLIB_IMPORT_VIOLATION,
-                type(self),
-            )
-        elif module_type == "THIRDPARTY":
-            if self._check_third_party_import(node=node, module_name=module_name):
-                return None
-            return (
-                node.lineno,
-                node.col_offset,
-                THIRD_PARTY_IMPORT_VIOLATION,
-                type(self),
-            )
-        elif module_type in ("LOCALFOLDER", "FIRSTPARTY"):
-            return self._check_local_import(node=node)
-        else:
-            raise ValueError(f"Unknown {module_type=}")
+    def _determine_source_type(self, module_name: str) -> SourceType:
+        isort_section = isort.place_module(module_name)
+        return {
+            isort.sections.FUTURE: SourceType.FUTURE,
+            isort.sections.STDLIB: SourceType.STDLIB,
+            isort.sections.THIRDPARTY: SourceType.THIRD_PARTY,
+            isort.sections.FIRSTPARTY: SourceType.FIRST_PARTY,
+            isort.sections.LOCALFOLDER: SourceType.FIRST_PARTY,
+        }[isort_section]
 
-    def _check_relative_import(
-        self, node: ast.ImportFrom
-    ) -> tuple[int, int, str, type[Plugin]] | None:
-        return None
+    def _check_import_from(self, node: ast.ImportFrom) -> typing.Iterator[str]:
+        if node.level > 0:
+            yield from self._check_relative_import(node)
+            return
+        assert (
+            node.module is not None
+        ), "node.module can't be None when import is not relative"
+        source_module = node.module
+        source_type = self._determine_source_type(module_name=source_module)
+        source_config = self._config_by_source[source_type]
+        for imported_object_alias in node.names:
+            imported_object = imported_object_alias.name
+            if imported_object == '*':
+                # Let flake8 handle wildcard import itself
+                return
+            full_imported_object_path = f'{source_module}.{imported_object}'
+            if self._is_module(full_imported_object_path):
+                if not source_config.allow_from_module:
+                    yield self._error_by_source[source_type].format(
+                        full_imported_object_path
+                    )
+            elif not source_config.allow_from_member:
+                yield self._error_by_source[source_type].format(
+                    full_imported_object_path
+                )
 
-    def _check_stdlib_import(
-        self, node: ast.Import | ast.ImportFrom, module_name: str
-    ) -> bool:
-        if isinstance(node, ast.Import):
-            return self._config.allow_stdlib_absolute
-        if self._is_module(module_name):
-            return self._config.allow_stdlib_from_module
-        return self._config.allow_stdlib_from_member
+    def _check_relative_import(self, node: ast.ImportFrom) -> typing.Iterator[str]:
+        assert node.level > 0, "Relative import's node.level must not be 0"
+        if node.level > self._config.max_relative_level:
+            return iter(RELATIVE_IMPORT_VIOLATION)
+        source_module = '.'.join(self._filename.split('/')[: node.level])
+        if node.module is not None:
+            source_module = f'{source_module}.{node.module}'
 
-    def _check_third_party_import(
-        self, node: ast.Import | ast.ImportFrom, module_name: str
-    ) -> bool:
-        if isinstance(node, ast.Import):
-            return self._config.allow_third_party_absolute
-        if self._is_module(module_name):
-            return self._config.allow_third_party_from_module
-        return self._config.allow_third_party_from_member
-
-    def _check_local_import(
-        self, node: ast.Import | ast.ImportFrom
-    ) -> tuple[int, int, str, type[Plugin]] | None:
-        return None
-
-        # print(f"{module_name=}, {module_type=}, {node=}")
-        # if isinstance(node, ast.ImportFrom) and node.level == 1:
-        #     if self._filename.endswith('__init__.py'):
-        #         return None
-        #     for n in node.names:
-        #         if n.name == "*":
-        #             continue
-        #         print(f"{n.name=}")
-        #         full_module_name = f".{module_name}.{n.name}"
-        #         if not self.is_module(full_module_name):
-        #             return (
-        #                 node.lineno,
-        #                 node.col_offset,
-        #                 f"FIP003 Do not import members from `{module_name}`.",
-        #                 type(self),
-        #             )
-        # if module_type == "FUTURE":
-        #     return None
-        # elif module_type == "STDLIB":
-        #     policy = self.policies["built-ins"]
-        #     if (
-        #         policy["type"] == "absolute"  # type: ignore
-        #         and isinstance(node, ast.ImportFrom)
-        #         and module_name not in policy["exceptions"]  # type: ignore
-        #     ):
-        #         return (
-        #             node.lineno,
-        #             node.col_offset,
-        #             "FIP001 Use absolute imports for built-in modules.",
-        #             type(self),
-        #         )
-        #
-        # elif module_type == "THIRDPARTY":
-        #     policy = self.policies["third-party"]
-        #     if policy["type"] == "absolute" and isinstance(node, ast.ImportFrom):  # type: ignore
-        #         return (
-        #             node.lineno,
-        #             node.col_offset,
-        #             "FIP002 Use absolute imports for third-party modules.",
-        #             type(self),
-        #         )
-        #
-        # elif module_type in {"LOCALFOLDER", "FIRSTPARTY"}:
-        #     policy = self.policies["local"]
-        #     if (
-        #         policy["disallowed_members"]  # type: ignore
-        #         and isinstance(node, ast.ImportFrom)
-        #         and node.level == 0
-        #     ):
-        #         for n in node.names:
-        #             if n.name == "*":
-        #                 continue
-        #             full_module_name = f"{module_name}.{n.name}"
-        #             if not self.is_module(full_module_name):
-        #                 return (
-        #                     node.lineno,
-        #                     node.col_offset,
-        #                     f"FIP003 Do not import members from {module_name}.",
-        #                     type(self),
-        #                 )
-        # else:
-        #     print(f"unknown {module_type=}")
-        # return None
+        for imported_object_alias in node.names:
+            imported_object = imported_object_alias.name
+            if imported_object == '*':
+                # Let flake8 handle wildcard import itself
+                return
+            full_imported_object_path = f'{source_module}.{imported_object}'
+            if self._is_module(full_imported_object_path):
+                if not self._config.allow_relative_from_module:
+                    yield RELATIVE_IMPORT_VIOLATION.format(full_imported_object_path)
+            elif not self._config.allow_relative_from_member:
+                yield RELATIVE_IMPORT_VIOLATION.format(full_imported_object_path)
 
     def _is_module(self, full_module_name: str) -> bool:
         try:
