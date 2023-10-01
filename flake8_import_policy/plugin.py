@@ -16,19 +16,24 @@ else:
     import importlib.metadata as importlib_metadata
 
 
+STDLIB_IMPORT_VIOLATION = "FIP001 stdlib module import policy violation"
+THIRD_PARTY_IMPORT_VIOLATION = "FIP002 third-party module import policy violation"
+FIRST_PARTY_IMPORT_VIOLATION = "FIP003 first-party module import policy violation"
+RELATIVE_IMPORT_VIOLATION = "FIP004 relative module import policy violation"
+
+
 class Plugin:
     name = __package__
     version = importlib_metadata.version(__package__)
-    policies = {
-        "built-ins": {"type": "absolute", "exceptions": ["datetime"]},
-        "third-party": {"type": "absolute"},
-        "local": {"type": "from-or-absolute", "disallowed_members": True},
-    }
-    config: config.Config
 
-    def __init__(self, tree: ast.AST, filename: str) -> None:
+    _config = config.Config()
+
+    def __init__(
+        self, tree: ast.AST, filename: str, plugin_config: config.Config | None = None
+    ) -> None:
         self._tree = tree
         self._filename = filename
+        self._config = plugin_config or self._config
 
     @classmethod
     def add_options(cls, parser: flake8.options.manager.OptionManager) -> None:
@@ -122,7 +127,7 @@ class Plugin:
 
     @classmethod
     def parse_options(cls, options: flake8.options.manager.OptionManager) -> None:
-        cls.config = config.Config(
+        cls._config = config.Config(
             allow_stdlib_absolute=not options.forbid_stdlib_absolute,
             allow_stdlib_from_module=options.allow_stdlib_from_module,
             allow_stdlib_from_member=options.allow_stdlib_from_member,
@@ -138,9 +143,8 @@ class Plugin:
         )
 
     def run(self) -> typing.Iterator[tuple[int, int, str, type[Plugin]]]:
-        print(f"loaded {self.config=}")
+        print(f"loaded {self._config=}")
         for node in ast.walk(self._tree):
-            continue
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 result = self.check_policy(node)
                 if result is not None:
@@ -152,73 +156,120 @@ class Plugin:
         module_name = (
             node.module if isinstance(node, ast.ImportFrom) else node.names[0].name
         )
-        assert module_name is not None  # FIXME
-        module_type = isort.place_module(module_name)
-        print(f"{module_name=}, {module_type=}, {node=}")
-        if isinstance(node, ast.ImportFrom) and node.level == 1:
-            if self._filename.endswith('__init__.py'):
-                return None
-            for n in node.names:
-                if n.name == "*":
-                    continue
-                print(f"{n.name=}")
-                full_module_name = f".{module_name}.{n.name}"
-                if not self.is_module(full_module_name):
-                    return (
-                        node.lineno,
-                        node.col_offset,
-                        f"FIP003 Do not import members from `{module_name}`.",
-                        type(self),
-                    )
+        module_type = (
+            isort.place_module(module_name) if module_name is not None else "RELATIVE"
+        )
+
+        if isinstance(node, ast.ImportFrom) and node.level > 0:
+            return self._check_relative_import(node=node)
+        assert module_name is not None
         if module_type == "FUTURE":
             return None
         elif module_type == "STDLIB":
-            policy = self.policies["built-ins"]
-            if (
-                policy["type"] == "absolute"  # type: ignore
-                and isinstance(node, ast.ImportFrom)
-                and module_name not in policy["exceptions"]  # type: ignore
-            ):
-                return (
-                    node.lineno,
-                    node.col_offset,
-                    "FIP001 Use absolute imports for built-in modules.",
-                    type(self),
-                )
-
+            if self._check_stdlib_import(node=node, module_name=module_name):
+                return None
+            return (
+                node.lineno,
+                node.col_offset,
+                STDLIB_IMPORT_VIOLATION,
+                type(self),
+            )
         elif module_type == "THIRDPARTY":
-            policy = self.policies["third-party"]
-            if policy["type"] == "absolute" and isinstance(node, ast.ImportFrom):  # type: ignore
-                return (
-                    node.lineno,
-                    node.col_offset,
-                    "FIP002 Use absolute imports for third-party modules.",
-                    type(self),
-                )
-
-        elif module_type in {"LOCALFOLDER", "FIRSTPARTY"}:
-            policy = self.policies["local"]
-            if (
-                policy["disallowed_members"]  # type: ignore
-                and isinstance(node, ast.ImportFrom)
-                and node.level == 0
-            ):
-                for n in node.names:
-                    if n.name == "*":
-                        continue
-                    full_module_name = f"{module_name}.{n.name}"
-                    if not self.is_module(full_module_name):
-                        return (
-                            node.lineno,
-                            node.col_offset,
-                            f"FIP003 Do not import members from {module_name}.",
-                            type(self),
-                        )
+            return self._check_third_party_import(node=node)
+        elif module_type in ("LOCALFOLDER", "FIRSTPARTY"):
+            return self._check_local_import(node=node)
         else:
-            print(f"unknown {module_type=}")
+            raise ValueError(f"Unknown {module_type=}")
+
+    def _check_relative_import(
+        self, node: ast.ImportFrom
+    ) -> tuple[int, int, str, type[Plugin]] | None:
         return None
 
-    def is_module(self, full_module_name: str) -> bool:
+    def _check_stdlib_import(
+        self, node: ast.Import | ast.ImportFrom, module_name: str
+    ) -> bool:
+        if isinstance(node, ast.Import):
+            return self._config.allow_stdlib_absolute
+        if self._is_module(module_name):
+            return self._config.allow_stdlib_from_module
+        return self._config.allow_stdlib_from_member
+
+    def _check_third_party_import(
+        self, node: ast.Import | ast.ImportFrom
+    ) -> tuple[int, int, str, type[Plugin]] | None:
+        return None
+
+    def _check_local_import(
+        self, node: ast.Import | ast.ImportFrom
+    ) -> tuple[int, int, str, type[Plugin]] | None:
+        return None
+
+        # print(f"{module_name=}, {module_type=}, {node=}")
+        # if isinstance(node, ast.ImportFrom) and node.level == 1:
+        #     if self._filename.endswith('__init__.py'):
+        #         return None
+        #     for n in node.names:
+        #         if n.name == "*":
+        #             continue
+        #         print(f"{n.name=}")
+        #         full_module_name = f".{module_name}.{n.name}"
+        #         if not self.is_module(full_module_name):
+        #             return (
+        #                 node.lineno,
+        #                 node.col_offset,
+        #                 f"FIP003 Do not import members from `{module_name}`.",
+        #                 type(self),
+        #             )
+        # if module_type == "FUTURE":
+        #     return None
+        # elif module_type == "STDLIB":
+        #     policy = self.policies["built-ins"]
+        #     if (
+        #         policy["type"] == "absolute"  # type: ignore
+        #         and isinstance(node, ast.ImportFrom)
+        #         and module_name not in policy["exceptions"]  # type: ignore
+        #     ):
+        #         return (
+        #             node.lineno,
+        #             node.col_offset,
+        #             "FIP001 Use absolute imports for built-in modules.",
+        #             type(self),
+        #         )
+        #
+        # elif module_type == "THIRDPARTY":
+        #     policy = self.policies["third-party"]
+        #     if policy["type"] == "absolute" and isinstance(node, ast.ImportFrom):  # type: ignore
+        #         return (
+        #             node.lineno,
+        #             node.col_offset,
+        #             "FIP002 Use absolute imports for third-party modules.",
+        #             type(self),
+        #         )
+        #
+        # elif module_type in {"LOCALFOLDER", "FIRSTPARTY"}:
+        #     policy = self.policies["local"]
+        #     if (
+        #         policy["disallowed_members"]  # type: ignore
+        #         and isinstance(node, ast.ImportFrom)
+        #         and node.level == 0
+        #     ):
+        #         for n in node.names:
+        #             if n.name == "*":
+        #                 continue
+        #             full_module_name = f"{module_name}.{n.name}"
+        #             if not self.is_module(full_module_name):
+        #                 return (
+        #                     node.lineno,
+        #                     node.col_offset,
+        #                     f"FIP003 Do not import members from {module_name}.",
+        #                     type(self),
+        #                 )
+        # else:
+        #     print(f"unknown {module_type=}")
+        # return None
+
+    def _is_module(self, full_module_name: str) -> bool:
         try:
             __import__(full_module_name)
             return True

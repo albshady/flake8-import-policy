@@ -1,20 +1,28 @@
+from __future__ import annotations
+
 import ast
-import datetime
 import textwrap
-import typing
 
 import flake8_import_policy
+from flake8_import_policy import config
 
 
-def main(numbers: typing.List[int]) -> None:
-    now = datetime.datetime.now()
-    print(numbers, now)
+def get_default_config():
+    return config.Config(
+        allow_local_absolute=True,
+    )
 
 
-def get_errors(code: str):
+def get_errors(
+    code: str,
+    filename: str = 'module.py',
+    plugin_config: config.Config | None = None,
+) -> set[str]:
     tree = ast.parse(code)
-    plugin = flake8_import_policy.Plugin(tree=tree)
-    return list(plugin.run())
+    plugin = flake8_import_policy.Plugin(
+        tree=tree, filename=filename, plugin_config=plugin_config
+    )
+    return {f'{line}:{col} {msg}' for line, col, msg, _ in plugin.run()}
 
 
 def test_correct_stdlib_import():
@@ -23,7 +31,6 @@ def test_correct_stdlib_import():
         import asyncio
         import time
         import typing
-        from datetime import datetime
         """
     )
     errors = get_errors(code)
@@ -33,8 +40,7 @@ def test_correct_stdlib_import():
 def test_stdlib_import_policy_violation():
     code = "from os import path"
     errors = get_errors(code)
-    assert len(errors) == 1
-    assert "FIP001" in errors[0][2]
+    assert errors == {"1:0 FIP001 stdlib module import policy violation"}
 
 
 def test_correct_third_party_import():
@@ -51,8 +57,7 @@ def test_correct_third_party_import():
 def test_third_party_import_policy_violation():
     code = "from pytest import fixture"
     errors = get_errors(code)
-    assert len(errors) == 1
-    assert "FIP002" in errors[0][2]
+    assert errors == {"1:0 FIP002 third-party imports policy violation"}
 
 
 def test_correct_local_module_import():
@@ -74,7 +79,7 @@ def test_forbid_module_member_import():
     )
     errors = get_errors(code)
     assert len(errors) == 1
-    assert "FIP003" in errors[0][2]
+    assert "1:0 FIP003 Do not import members from `flake8_import_policy`" in errors
 
 
 def test_relative_module_import():
@@ -95,4 +100,4 @@ def test_forbid_import_member_from_relative_module():
     )
     errors = get_errors(code)
     assert len(errors) == 1
-    assert "FIP003" in errors[0][2]
+    assert "1:0 FIP003 Do not import members from `local_package`" in errors

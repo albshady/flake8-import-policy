@@ -1,0 +1,6 @@
+[tool.flake8-import-policy]
+stdlib = []
+third-party = []
+local-package = []
+relative = []
+relative-max-level = 0

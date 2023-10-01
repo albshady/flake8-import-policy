@@ -1,0 +1,6 @@
+[tool.flake8-import-policy]
+stdlib = ["absolute", "from_module", "from_member"]
+third-party = ["absolute", "from_module", "from_member"]
+local-package = ["absolute", "from_module", "from_member"]
+relative = ["absolute", "from_module", "from_member"]
+relative-max-level = 2
