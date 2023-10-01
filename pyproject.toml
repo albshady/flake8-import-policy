@@ -30,16 +30,6 @@ skip-string-normalization = true
 profile = "black"
 lines_after_imports = 2
 
-[tool.flake8-import-policy]
-stdlib = ["absolute"]
-third-party = ["absolute", "from_module"]
-local = ["absolute", "from_module"]
-relative = ["from_module"]
-relative-max-level = 1
-
-[tool.flake8-import-policy.overrides]
-datetime = ["from_member"]
-
 [tool.mypy]
 disallow_incomplete_defs = true
 disallow_untyped_defs = true
