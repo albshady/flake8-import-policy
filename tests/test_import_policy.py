@@ -57,7 +57,7 @@ def test_correct_third_party_import():
 def test_third_party_import_policy_violation():
     code = "from pytest import fixture"
     errors = get_errors(code)
-    assert errors == {"1:0 FIP002 third-party imports policy violation"}
+    assert errors == {"1:0 FIP002 third-party module import policy violation"}
 
 
 def test_correct_local_module_import():

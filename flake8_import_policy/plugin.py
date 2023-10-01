@@ -175,7 +175,14 @@ class Plugin:
                 type(self),
             )
         elif module_type == "THIRDPARTY":
-            return self._check_third_party_import(node=node)
+            if self._check_third_party_import(node=node, module_name=module_name):
+                return None
+            return (
+                node.lineno,
+                node.col_offset,
+                THIRD_PARTY_IMPORT_VIOLATION,
+                type(self),
+            )
         elif module_type in ("LOCALFOLDER", "FIRSTPARTY"):
             return self._check_local_import(node=node)
         else:
@@ -196,9 +203,13 @@ class Plugin:
         return self._config.allow_stdlib_from_member
 
     def _check_third_party_import(
-        self, node: ast.Import | ast.ImportFrom
-    ) -> tuple[int, int, str, type[Plugin]] | None:
-        return None
+        self, node: ast.Import | ast.ImportFrom, module_name: str
+    ) -> bool:
+        if isinstance(node, ast.Import):
+            return self._config.allow_third_party_absolute
+        if self._is_module(module_name):
+            return self._config.allow_third_party_from_module
+        return self._config.allow_third_party_from_member
 
     def _check_local_import(
         self, node: ast.Import | ast.ImportFrom
