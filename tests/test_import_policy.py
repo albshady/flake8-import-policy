@@ -60,7 +60,7 @@ def test_override_stdlib_import():
 def test_stdlib_import_policy_violation():
     code = "from os import path"
     errors = get_errors(code)
-    assert errors == {"1:0 FIP001 stdlib module import policy violation"}
+    assert errors == {"1:0 FIP001 `from os import path` is forbidden"}
 
 
 def test_correct_third_party_import():
@@ -77,7 +77,7 @@ def test_correct_third_party_import():
 def test_third_party_import_policy_violation():
     code = "from pytest import fixture"
     errors = get_errors(code)
-    assert errors == {"1:0 FIP002 third-party module import policy violation"}
+    assert errors == {"1:0 FIP002 `from pytest import fixture` is forbidden"}
 
 
 def test_correct_local_module_import():
@@ -100,7 +100,9 @@ def test_forbid_local_module_member_import():
         """
     )
     errors = get_errors(code)
-    assert errors == {"1:0 FIP003 first-party module import policy violation"}
+    assert errors == {
+        "1:0 FIP003 `from flake8_import_policy import Plugin` is forbidden"
+    }
 
 
 def test_forbid_import_member_when_importing_multiple_from_local_module():
@@ -110,7 +112,9 @@ def test_forbid_import_member_when_importing_multiple_from_local_module():
         """
     )
     errors = get_errors(code)
-    assert errors == {"1:0 FIP003 first-party module import policy violation"}
+    assert errors == {
+        "1:0 FIP003 `from flake8_import_policy import Plugin` is forbidden"
+    }
 
 
 def test_relative_module_import():
@@ -130,7 +134,7 @@ def test_forbid_import_member_from_relative_module():
         """
     )
     errors = get_errors(code)
-    assert errors == {"1:0 FIP004 relative module import policy violation"}
+    assert errors == {"1:0 FIP004 `from .local_package import member` is forbidden"}
 
 
 def test_forbid_absolute_alias():
@@ -140,7 +144,7 @@ def test_forbid_absolute_alias():
         """
     )
     errors = get_errors(code)
-    assert errors == {"1:0 FIP005 use of unregistered alias"}
+    assert errors == {"1:0 FIP005 use of unregistered alias: `datetime` -> `dt`"}
 
 
 def test_allow_absolute_alias():
@@ -165,7 +169,7 @@ def test_allow_alias_but_forbid_from_member():
         code,
         plugin_config=create_config(registered_aliases={'datetime.datetime': 'dt'}),
     )
-    assert errors == {'1:0 FIP001 stdlib module import policy violation'}
+    assert errors == {'1:0 FIP001 `from datetime import datetime` is forbidden'}
 
 
 def test_allow_from_member_but_forbid_alias():
@@ -180,7 +184,9 @@ def test_allow_from_member_but_forbid_alias():
             overrides={'datetime': config.Override(allow_from_member=True)},
         ),
     )
-    assert errors == {'1:0 FIP005 use of unregistered alias'}
+    assert errors == {
+        '1:0 FIP005 use of unregistered alias: `datetime.datetime` -> `dt`'
+    }
 
 
 def test_allow_from_member_alias():
@@ -206,7 +212,9 @@ def test_forbid_relative_alias():
         """
     )
     errors = get_errors(code)
-    assert errors == {'1:0 FIP005 use of unregistered alias'}
+    assert errors == {
+        '1:0 FIP005 use of unregistered alias: `tests.local_package.module` -> `alias`'
+    }
 
 
 def test_allow_relative_alias():

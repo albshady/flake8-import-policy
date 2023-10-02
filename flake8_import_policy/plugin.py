@@ -14,11 +14,13 @@ from . import config
 
 
 FUTURE_IMPORT_VIOLATION = "FIP000 __future__ module import policy violation"
-STDLIB_IMPORT_VIOLATION = "FIP001 stdlib module import policy violation"
-THIRD_PARTY_IMPORT_VIOLATION = "FIP002 third-party module import policy violation"
-FIRST_PARTY_IMPORT_VIOLATION = "FIP003 first-party module import policy violation"
-RELATIVE_IMPORT_VIOLATION = "FIP004 relative module import policy violation"
-UNREGISTERED_ALIAS_ABUSE = "FIP005 use of unregistered alias"
+STDLIB_IMPORT_VIOLATION = "FIP001 `{}` is forbidden"
+THIRD_PARTY_IMPORT_VIOLATION = "FIP002 `{}` is forbidden"
+FIRST_PARTY_IMPORT_VIOLATION = "FIP003 `{}` is forbidden"
+RELATIVE_IMPORT_VIOLATION = "FIP004 `{}` is forbidden"
+UNREGISTERED_ALIAS_ABUSE = (
+    "FIP005 use of unregistered alias: `{module_name}` -> `{alias}`"
+)
 
 
 class SourceType(enum.Enum):
@@ -278,9 +280,13 @@ class Plugin:
             full_imported_object_path = f'{source_module}.{imported_object}'
             if self._is_module(full_imported_object_path):
                 if not source_config.allow_from_module:
-                    yield error_template.format(full_imported_object_path)
+                    yield error_template.format(
+                        f"from {source_module} import {imported_object}"
+                    )
             elif not source_config.allow_from_member:
-                yield error_template.format(full_imported_object_path)
+                yield error_template.format(
+                    f"from {source_module} import {imported_object}"
+                )
             if (alias := imported_object_alias.asname) is not None:
                 yield from self._check_alias(
                     module_name=full_imported_object_path, alias=alias
@@ -312,9 +318,13 @@ class Plugin:
             full_imported_object_path = f'{source_module}.{imported_object}'
             if self._is_module(full_imported_object_path):
                 if not self._config.allow_relative_from_module:
-                    yield RELATIVE_IMPORT_VIOLATION.format(full_imported_object_path)
+                    yield RELATIVE_IMPORT_VIOLATION.format(
+                        f"from {'.' * node.level}{node.module or ''} import {imported_object}"
+                    )
             elif not self._config.allow_relative_from_member:
-                yield RELATIVE_IMPORT_VIOLATION.format(full_imported_object_path)
+                yield RELATIVE_IMPORT_VIOLATION.format(
+                    f"from {'.' * node.level}{node.module or ''} import {imported_object}"
+                )
             if (alias := imported_object_alias.asname) is not None:
                 yield from self._check_alias(
                     module_name=full_imported_object_path, alias=alias
