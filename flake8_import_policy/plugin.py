@@ -4,6 +4,9 @@ import ast
 import collections
 import enum
 import importlib.metadata
+import importlib.util
+import pathlib
+import sys
 import typing
 
 import flake8.options.manager  # type: ignore[import]
@@ -38,7 +41,7 @@ class Plugin:
 
     def __init__(self, tree: ast.AST, filename: str) -> None:
         self._tree = tree
-        self._filename = filename
+        self._filepath = pathlib.Path(filename)
         self._config_by_source = {
             SourceType.FUTURE: self._config.future,
             SourceType.STDLIB: self._config.stdlib,
@@ -220,7 +223,10 @@ class Plugin:
         )
 
     def run(self) -> typing.Iterator[tuple[int, int, str, type[Plugin]]]:
-        if self._filename.endswith('__init__.py') and not self._config.check_init:
+        sys.path.append(str(pathlib.Path.cwd()))
+        if self._filepath.name.startswith('.'):
+            return
+        if self._filepath.name == '__init__.py' and not self._config.check_init:
             return
         for node in ast.walk(self._tree):
             if isinstance(node, ast.Import):
@@ -302,8 +308,7 @@ class Plugin:
         assert node.level > 0, "Relative import's node.level must not be 0"
         if node.level > self._config.max_relative_level:
             return iter(RELATIVE_IMPORT_VIOLATION)
-        parts = [p for p in self._filename.split('/') if p != '.']
-        source_module = '.'.join(parts[: -node.level])
+        source_module = str(self._filepath.parents[node.level - 1]).replace('/', '.')
         if node.module is not None:
             source_module = f'{source_module}.{node.module}'
 
@@ -329,7 +334,7 @@ class Plugin:
 
     def _is_module(self, full_module_name: str) -> bool:
         try:
-            __import__(full_module_name)
-        except ImportError:
+            spec = importlib.util.find_spec(full_module_name)
+        except ModuleNotFoundError:
             return False
-        return True
+        return spec is not None
