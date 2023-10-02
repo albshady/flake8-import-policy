@@ -30,6 +30,7 @@ class Override(typing.NamedTuple):
 class Config(typing.NamedTuple):
     overrides: typing.Mapping[str, Override]
     registered_aliases: typing.Mapping[str, str]
+    check_init: bool = False
 
     future: SourceConfig = SourceConfig(allow_absolute=True, allow_from_member=True)
     stdlib: SourceConfig = SourceConfig(allow_absolute=True)

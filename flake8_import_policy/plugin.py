@@ -143,11 +143,11 @@ class Plugin:
             help="Allow `from ... import member` for relative modules",
         )
         parser.add_option(
-            '--alias',
+            '--register-import-alias',
             action='append',
             default=[],
             type='string',
-            dest='registered_aliases',
+            dest='registered_import_aliases',
             parse_from_config=True,
             help=(
                 "Register an allowed alias for a module. "
@@ -155,11 +155,11 @@ class Plugin:
             ),
         )
         parser.add_option(
-            '--override',
+            '--override-import-policy',
             action='append',
             default=[],
             type='string',
-            dest='overrides',
+            dest='import_policy_overrides',
             parse_from_config=True,
             help=(
                 "Override default behavior for specific modules. "
@@ -167,13 +167,20 @@ class Plugin:
                 " `django_rest_framework-forbid-absolute`"
             ),
         )
+        parser.add_option(
+            '--init-must-follow-import-policy',
+            action='store_true',
+            default=False,
+            parse_from_config=True,
+            help="Whether `__init__.py` shall follow import policies",
+        )
 
     @classmethod
     def parse_options(cls, options: flake8.options.manager.OptionManager) -> None:
         overrides: collections.defaultdict[
             str, config.Override
         ] = collections.defaultdict(config.Override)
-        for override in options.overrides:
+        for override in options.import_policy_overrides:
             parts = override.split('-')
             module = parts[0]
             action = parts[1]
@@ -185,13 +192,14 @@ class Plugin:
             )
 
         registered_aliases: dict[str, str] = {}
-        for raw_alias in options.registered_aliases:
+        for raw_alias in options.registered_import_aliases:
             full_module_path, _, alias = raw_alias.partition('=')
             registered_aliases[full_module_path] = alias
 
         cls._config = config.Config(
             overrides=overrides,
             registered_aliases=registered_aliases,
+            check_init=options.init_must_follow_import_policy,
             stdlib=config.SourceConfig(
                 allow_absolute=not options.forbid_stdlib_absolute,
                 allow_from_module=options.allow_stdlib_from_module,
@@ -213,7 +221,7 @@ class Plugin:
         )
 
     def run(self) -> typing.Iterator[tuple[int, int, str, type[Plugin]]]:
-        if self._filename.endswith('__init__.py'):
+        if self._filename.endswith('__init__.py') and not self._config.check_init:
             return
         for node in ast.walk(self._tree):
             if isinstance(node, ast.Import):
