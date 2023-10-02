@@ -71,13 +71,6 @@ class Plugin:
             parse_from_config=True,
             help="Allow `from ... import module` for stdlib",
         )
-        parser.add_option(
-            '--allow-stdlib-from-member',
-            action='store_true',
-            default=False,
-            parse_from_config=True,
-            help="Allow `from ... import member` for stdlib",
-        )
 
         parser.add_option(
             '--forbid-third-party-absolute',
@@ -92,13 +85,6 @@ class Plugin:
             default=False,
             parse_from_config=True,
             help="Allow `from ... import module` for third-party",
-        )
-        parser.add_option(
-            '--allow-third-party-from-member',
-            action='store_true',
-            default=False,
-            parse_from_config=True,
-            help="Allow `from ... import member` for third-party",
         )
 
         parser.add_option(
@@ -115,13 +101,6 @@ class Plugin:
             parse_from_config=True,
             help="Forbid `from ... import module` for local modules",
         )
-        parser.add_option(
-            '--allow-local-from-member',
-            action='store_true',
-            default=False,
-            parse_from_config=True,
-            help="Allow `from ... import member` for local modules",
-        )
 
         parser.add_option(
             '--max-relative-level',
@@ -136,13 +115,6 @@ class Plugin:
             default=False,
             parse_from_config=True,
             help="Forbid `from ... import module` for relative modules",
-        )
-        parser.add_option(
-            '--allow-relative-from-member',
-            action='store_true',
-            default=False,
-            parse_from_config=True,
-            help="Allow `from ... import member` for relative modules",
         )
         parser.add_option(
             '--register-import-alias',
@@ -165,7 +137,7 @@ class Plugin:
             parse_from_config=True,
             help=(
                 "Override default behavior for specific modules. "
-                "Format `module-<allow:forbid>-policy`, e.g. `typing-allow-from-member`"
+                "Format `module-<allow:forbid>-policy`, e.g. `typing-allow-from-module`"
                 " `django_rest_framework-forbid-absolute`"
             ),
         )
@@ -205,21 +177,17 @@ class Plugin:
             stdlib=config.SourceConfig(
                 allow_absolute=not options.forbid_stdlib_absolute,
                 allow_from_module=options.allow_stdlib_from_module,
-                allow_from_member=options.allow_stdlib_from_member,
             ),
             third_party=config.SourceConfig(
                 allow_absolute=not options.forbid_third_party_absolute,
                 allow_from_module=options.allow_third_party_from_module,
-                allow_from_member=options.allow_third_party_from_member,
             ),
             first_party=config.SourceConfig(
                 allow_absolute=not options.forbid_local_absolute,
                 allow_from_module=not options.forbid_local_from_module,
-                allow_from_member=options.allow_local_from_member,
             ),
             max_relative_level=options.max_relative_level,
             allow_relative_from_module=not options.forbid_relative_from_module,
-            allow_relative_from_member=options.allow_relative_from_member,
         )
 
     def run(self) -> typing.Iterator[tuple[int, int, str, type[Plugin]]]:
@@ -281,12 +249,7 @@ class Plugin:
                 # Let flake8 handle wildcard import itself
                 return
             full_imported_object_path = f'{source_module}.{imported_object}'
-            if self._is_module(full_imported_object_path):
-                if not source_config.allow_from_module:
-                    yield error_template.format(
-                        f"from {source_module} import {imported_object}"
-                    )
-            elif not source_config.allow_from_member:
+            if not source_config.allow_from_module:
                 yield error_template.format(
                     f"from {source_module} import {imported_object}"
                 )
@@ -317,24 +280,12 @@ class Plugin:
             if imported_object == '*':
                 # Let flake8 handle wildcard import itself
                 return
-            full_imported_object_path = f'{source_module}.{imported_object}'
-            if self._is_module(full_imported_object_path):
-                if not self._config.allow_relative_from_module:
-                    yield RELATIVE_IMPORT_VIOLATION.format(
-                        f"from {'.' * node.level}{node.module or ''} import {imported_object}"
-                    )
-            elif not self._config.allow_relative_from_member:
+            if not self._config.allow_relative_from_module:
                 yield RELATIVE_IMPORT_VIOLATION.format(
                     f"from {'.' * node.level}{node.module or ''} import {imported_object}"
                 )
+            full_imported_object_path = f'{source_module}.{imported_object}'
             if (alias := imported_object_alias.asname) is not None:
                 yield from self._check_alias(
                     module_name=full_imported_object_path, alias=alias
                 )
-
-    def _is_module(self, full_module_name: str) -> bool:
-        try:
-            spec = importlib.util.find_spec(full_module_name)
-        except ModuleNotFoundError:
-            return False
-        return spec is not None

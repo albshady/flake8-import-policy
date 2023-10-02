@@ -32,7 +32,9 @@ class Config(typing.NamedTuple):
     registered_aliases: typing.Mapping[str, str]
     check_init: bool = False
 
-    future: SourceConfig = SourceConfig(allow_absolute=True, allow_from_member=True)
+    future: SourceConfig = SourceConfig(
+        allow_absolute=True, allow_from_module=True, allow_from_member=True
+    )
     stdlib: SourceConfig = SourceConfig(allow_absolute=True)
     third_party: SourceConfig = SourceConfig(allow_absolute=True)
     first_party: SourceConfig = SourceConfig(
