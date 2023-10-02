@@ -23,9 +23,8 @@ def get_errors(
     plugin_config: config.Config | None = None,
 ) -> set[str]:
     tree = ast.parse(code)
-    plugin = flake8_import_policy.Plugin(
-        tree=tree, filename=filename, plugin_config=plugin_config
-    )
+    flake8_import_policy.Plugin._config = plugin_config or create_config()
+    plugin = flake8_import_policy.Plugin(tree=tree, filename=filename)
     return {f'{line}:{col} {msg}' for line, col, msg, _ in plugin.run()}
 
 

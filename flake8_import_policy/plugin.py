@@ -34,14 +34,11 @@ class Plugin:
     name = __package__
     version = importlib.metadata.version(__package__)
 
-    _config = config.Config(overrides={}, registered_aliases={})
+    _config: config.Config
 
-    def __init__(
-        self, tree: ast.AST, filename: str, plugin_config: config.Config | None = None
-    ) -> None:
+    def __init__(self, tree: ast.AST, filename: str) -> None:
         self._tree = tree
         self._filename = filename
-        self._config = plugin_config or self._config
         self._config_by_source = {
             SourceType.FUTURE: self._config.future,
             SourceType.STDLIB: self._config.stdlib,
