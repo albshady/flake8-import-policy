@@ -242,6 +242,6 @@ class Plugin:
     def _is_module(self, full_module_name: str) -> bool:
         try:
             __import__(full_module_name)
-            return True
         except ImportError:
             return False
+        return True
