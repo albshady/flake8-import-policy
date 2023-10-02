@@ -2,7 +2,8 @@
 name = "flake8-import-policy"
 version = "0.1.0"
 description = "Flake8 plugin to validate that code follows import policies"
-authors = ["Your Name <you@example.com>"]
+authors = ["Albert Shaidullin <3litac@gmail.com>"]
+license = "MIT"
 readme = "README.md"
 
 [tool.poetry.dependencies]
