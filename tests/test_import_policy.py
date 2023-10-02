@@ -131,3 +131,94 @@ def test_forbid_import_member_from_relative_module():
     )
     errors = get_errors(code)
     assert errors == {"1:0 FIP004 relative module import policy violation"}
+
+
+def test_forbid_absolute_alias():
+    code = textwrap.dedent(
+        """\
+        import datetime as dt
+        """
+    )
+    errors = get_errors(code)
+    assert errors == {"1:0 FIP005 use of unregistered alias"}
+
+
+def test_allow_absolute_alias():
+    code = textwrap.dedent(
+        """\
+        import datetime as dt
+        """
+    )
+    errors = get_errors(
+        code, plugin_config=create_config(registered_aliases={'datetime': 'dt'})
+    )
+    assert not errors
+
+
+def test_allow_alias_but_forbid_from_member():
+    code = textwrap.dedent(
+        """\
+        from datetime import datetime as dt
+        """
+    )
+    errors = get_errors(
+        code,
+        plugin_config=create_config(registered_aliases={'datetime.datetime': 'dt'}),
+    )
+    assert errors == {'1:0 FIP001 stdlib module import policy violation'}
+
+
+def test_allow_from_member_but_forbid_alias():
+    code = textwrap.dedent(
+        """\
+        from datetime import datetime as dt
+        """
+    )
+    errors = get_errors(
+        code,
+        plugin_config=create_config(
+            overrides={'datetime': config.Override(allow_from_member=True)},
+        ),
+    )
+    assert errors == {'1:0 FIP005 use of unregistered alias'}
+
+
+def test_allow_from_member_alias():
+    code = textwrap.dedent(
+        """\
+        from datetime import datetime as dt
+        """
+    )
+    errors = get_errors(
+        code,
+        plugin_config=create_config(
+            registered_aliases={'datetime.datetime': 'dt'},
+            overrides={'datetime': config.Override(allow_from_member=True)},
+        ),
+    )
+    assert not errors
+
+
+def test_forbid_relative_alias():
+    code = textwrap.dedent(
+        """\
+        from .local_package import module as alias
+        """
+    )
+    errors = get_errors(code)
+    assert errors == {'1:0 FIP005 use of unregistered alias'}
+
+
+def test_allow_relative_alias():
+    code = textwrap.dedent(
+        """\
+        from .local_package import module as alias
+        """
+    )
+    errors = get_errors(
+        code,
+        plugin_config=create_config(
+            registered_aliases={'tests.local_package.module': 'alias'}
+        ),
+    )
+    assert not errors

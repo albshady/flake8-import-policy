@@ -18,6 +18,7 @@ STDLIB_IMPORT_VIOLATION = "FIP001 stdlib module import policy violation"
 THIRD_PARTY_IMPORT_VIOLATION = "FIP002 third-party module import policy violation"
 FIRST_PARTY_IMPORT_VIOLATION = "FIP003 first-party module import policy violation"
 RELATIVE_IMPORT_VIOLATION = "FIP004 relative module import policy violation"
+UNREGISTERED_ALIAS_ABUSE = "FIP005 use of unregistered alias"
 
 
 class SourceType(enum.Enum):
@@ -182,9 +183,15 @@ class Plugin:
             overrides[module] = overrides[module].evolve(
                 {f'allow_{policy}': action == 'allow'}
             )
+
+        registered_aliases: dict[str, str] = {}
+        for raw_alias in options.registered_aliases:
+            full_module_path, _, alias = raw_alias.partition('=')
+            registered_aliases[full_module_path] = alias
+
         cls._config = config.Config(
             overrides=overrides,
-            registered_aliases=options.registered_aliases,
+            registered_aliases=registered_aliases,
             stdlib=config.SourceConfig(
                 allow_absolute=not options.forbid_stdlib_absolute,
                 allow_from_module=options.allow_stdlib_from_module,
@@ -221,11 +228,18 @@ class Plugin:
     def _check_absolute_import(self, node: ast.Import) -> typing.Iterator[str]:
         for imported_module in node.names:
             module_name = imported_module.name
+            alias = imported_module.asname
             source_config, error_template = self._get_config_and_error_template(
                 module_name
             )
             if not source_config.allow_absolute:
                 yield error_template.format(module_name)
+            if alias is not None:
+                yield from self._check_alias(module_name, alias)
+
+    def _check_alias(self, module_name: str, alias: str) -> typing.Iterator[str]:
+        if self._config.registered_aliases.get(module_name) != alias:
+            yield UNREGISTERED_ALIAS_ABUSE.format(module_name=module_name, alias=alias)
 
     def _determine_source_type(self, module_name: str) -> SourceType:
         isort_section = isort.place_module(module_name)
@@ -259,6 +273,10 @@ class Plugin:
                     yield error_template.format(full_imported_object_path)
             elif not source_config.allow_from_member:
                 yield error_template.format(full_imported_object_path)
+            if (alias := imported_object_alias.asname) is not None:
+                yield from self._check_alias(
+                    module_name=full_imported_object_path, alias=alias
+                )
 
     def _get_config_and_error_template(
         self, source_module: str
@@ -289,6 +307,10 @@ class Plugin:
                     yield RELATIVE_IMPORT_VIOLATION.format(full_imported_object_path)
             elif not self._config.allow_relative_from_member:
                 yield RELATIVE_IMPORT_VIOLATION.format(full_imported_object_path)
+            if (alias := imported_object_alias.asname) is not None:
+                yield from self._check_alias(
+                    module_name=full_imported_object_path, alias=alias
+                )
 
     def _is_module(self, full_module_name: str) -> bool:
         try:
