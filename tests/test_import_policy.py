@@ -7,9 +7,13 @@ import flake8_import_policy
 from flake8_import_policy import config
 
 
-def get_default_config():
+def create_config(
+    registered_aliases: dict[str, str] | None = None,
+    overrides: dict[str, config.Override] | None = None,
+) -> config.Config:
     return config.Config(
-        allow_local_absolute=True,
+        registered_aliases=registered_aliases or {},
+        overrides=overrides or {},
     )
 
 
@@ -34,6 +38,22 @@ def test_correct_stdlib_import():
         """
     )
     errors = get_errors(code)
+    assert not errors
+
+
+def test_override_stdlib_import():
+    code = textwrap.dedent(
+        """\
+        import datetime
+        from datetime import datetime
+        """
+    )
+    errors = get_errors(
+        code,
+        plugin_config=create_config(
+            overrides={'datetime': config.Override(allow_from_member=True)}
+        ),
+    )
     assert not errors
 
 

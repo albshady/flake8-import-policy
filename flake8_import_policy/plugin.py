@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import collections
 import enum
 import importlib.metadata
 import typing
@@ -30,7 +31,7 @@ class Plugin:
     name = __package__
     version = importlib.metadata.version(__package__)
 
-    _config = config.Config()
+    _config = config.Config(overrides={}, registered_aliases={})
 
     def __init__(
         self, tree: ast.AST, filename: str, plugin_config: config.Config | None = None
@@ -140,10 +141,50 @@ class Plugin:
             parse_from_config=True,
             help="Allow `from ... import member` for relative modules",
         )
+        parser.add_option(
+            '--alias',
+            action='append',
+            default=[],
+            type='string',
+            dest='registered_aliases',
+            parse_from_config=True,
+            help=(
+                "Register an allowed alias for a module. "
+                "Format `original=alias`, e.g. `sqlalchemy=sa`, `matplotlib.pyplot=plt`"
+            ),
+        )
+        parser.add_option(
+            '--override',
+            action='append',
+            default=[],
+            type='string',
+            dest='overrides',
+            parse_from_config=True,
+            help=(
+                "Override default behavior for specific modules. "
+                "Format `module-<allow:forbid>-policy`, e.g. `typing-allow-from-member`"
+                " `django_rest_framework-forbid-absolute`"
+            ),
+        )
 
     @classmethod
     def parse_options(cls, options: flake8.options.manager.OptionManager) -> None:
+        overrides: collections.defaultdict[
+            str, config.Override
+        ] = collections.defaultdict(config.Override)
+        for override in options.overrides:
+            parts = override.split('-')
+            module = parts[0]
+            action = parts[1]
+            policy = '_'.join(parts[2:])
+
+            assert action in ('allow', 'forbid')
+            overrides[module] = overrides[module].evolve(
+                {f'allow_{policy}': action == 'allow'}
+            )
         cls._config = config.Config(
+            overrides=overrides,
+            registered_aliases=options.registered_aliases,
             stdlib=config.SourceConfig(
                 allow_absolute=not options.forbid_stdlib_absolute,
                 allow_from_module=options.allow_stdlib_from_module,
@@ -165,6 +206,8 @@ class Plugin:
         )
 
     def run(self) -> typing.Iterator[tuple[int, int, str, type[Plugin]]]:
+        if self._filename.endswith('__init__.py'):
+            return
         for node in ast.walk(self._tree):
             if isinstance(node, ast.Import):
                 errors = self._check_absolute_import(node)
@@ -178,10 +221,11 @@ class Plugin:
     def _check_absolute_import(self, node: ast.Import) -> typing.Iterator[str]:
         for imported_module in node.names:
             module_name = imported_module.name
-            source_type = self._determine_source_type(module_name)
-            source_config = self._config_by_source[source_type]
+            source_config, error_template = self._get_config_and_error_template(
+                module_name
+            )
             if not source_config.allow_absolute:
-                yield self._error_by_source[source_type].format(module_name)
+                yield error_template.format(module_name)
 
     def _determine_source_type(self, module_name: str) -> SourceType:
         isort_section = isort.place_module(module_name)
@@ -201,8 +245,9 @@ class Plugin:
             node.module is not None
         ), "node.module can't be None when import is not relative"
         source_module = node.module
-        source_type = self._determine_source_type(module_name=source_module)
-        source_config = self._config_by_source[source_type]
+        source_config, error_template = self._get_config_and_error_template(
+            source_module=source_module
+        )
         for imported_object_alias in node.names:
             imported_object = imported_object_alias.name
             if imported_object == '*':
@@ -211,19 +256,25 @@ class Plugin:
             full_imported_object_path = f'{source_module}.{imported_object}'
             if self._is_module(full_imported_object_path):
                 if not source_config.allow_from_module:
-                    yield self._error_by_source[source_type].format(
-                        full_imported_object_path
-                    )
+                    yield error_template.format(full_imported_object_path)
             elif not source_config.allow_from_member:
-                yield self._error_by_source[source_type].format(
-                    full_imported_object_path
-                )
+                yield error_template.format(full_imported_object_path)
+
+    def _get_config_and_error_template(
+        self, source_module: str
+    ) -> tuple[config.SourceConfig, str]:
+        source_type = self._determine_source_type(module_name=source_module)
+        source_config = self._config_by_source[source_type]
+        override = self._config.overrides.get(source_module, config.Override())
+        source_config = override | source_config
+        return source_config, self._error_by_source[source_type]
 
     def _check_relative_import(self, node: ast.ImportFrom) -> typing.Iterator[str]:
         assert node.level > 0, "Relative import's node.level must not be 0"
         if node.level > self._config.max_relative_level:
             return iter(RELATIVE_IMPORT_VIOLATION)
-        source_module = '.'.join(self._filename.split('/')[: node.level])
+        parts = [p for p in self._filename.split('/') if p != '.']
+        source_module = '.'.join(parts[: -node.level])
         if node.module is not None:
             source_module = f'{source_module}.{node.module}'
 
