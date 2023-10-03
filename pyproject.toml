@@ -10,7 +10,6 @@ readme = "README.md"
 python = "^3.8"
 flake8 = ">=3.7"
 isort = ">=1"
-toml = "^0.10.2"
 
 [tool.poetry.plugins."flake8.extension"]
 "FIP" = "flake8_import_policy.plugin:Plugin"
@@ -18,11 +17,9 @@ toml = "^0.10.2"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.9.1"
-flake8-pyproject = "^1.2.3"
 mypy = "^1.5.1"
 pre-commit = "^3.4.0"
 pytest = "^7.4.2"
-types-toml = "^0.10.8.7"
 
 [tool.black]
 skip-string-normalization = true
