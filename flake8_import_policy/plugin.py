@@ -69,7 +69,7 @@ class Plugin:
             action='store_true',
             default=False,
             parse_from_config=True,
-            help="Allow `from ... import module` for stdlib",
+            help="Allow `from module import ...` for stdlib",
         )
 
         parser.add_option(
@@ -84,7 +84,7 @@ class Plugin:
             action='store_true',
             default=False,
             parse_from_config=True,
-            help="Allow `from ... import module` for third-party",
+            help="Allow `from module import ...` for third-party",
         )
 
         parser.add_option(
@@ -99,7 +99,7 @@ class Plugin:
             action='store_true',
             default=False,
             parse_from_config=True,
-            help="Forbid `from ... import module` for local modules",
+            help="Forbid `from module import ...` for local modules",
         )
 
         parser.add_option(
@@ -114,7 +114,7 @@ class Plugin:
             action='store_true',
             default=False,
             parse_from_config=True,
-            help="Forbid `from ... import module` for relative modules",
+            help="Forbid `from .module import ...` for relative modules",
         )
         parser.add_option(
             '--register-import-aliases',
@@ -123,8 +123,8 @@ class Plugin:
             parse_from_config=True,
             comma_separated_list=True,
             help=(
-                "Register an allowed alias for a module. "
-                "Format `original=alias`, e.g. `sqlalchemy=sa`, `matplotlib.pyplot=plt`"
+                "Register allowed aliases for modules. "
+                "Format `original=alias`, e.g. `sqlalchemy=sa,matplotlib.pyplot=plt`"
             ),
         )
         parser.add_option(
