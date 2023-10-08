@@ -117,12 +117,11 @@ class Plugin:
             help="Forbid `from ... import module` for relative modules",
         )
         parser.add_option(
-            '--register-import-alias',
-            action='append',
-            default=[],
-            type='string',
+            '--register-import-aliases',
+            default='',
             dest='registered_import_aliases',
             parse_from_config=True,
+            comma_separated_list=True,
             help=(
                 "Register an allowed alias for a module. "
                 "Format `original=alias`, e.g. `sqlalchemy=sa`, `matplotlib.pyplot=plt`"
