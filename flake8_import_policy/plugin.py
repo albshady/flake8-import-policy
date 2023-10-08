@@ -129,17 +129,36 @@ class Plugin:
             ),
         )
         parser.add_option(
-            '--override-import-policy',
-            action='append',
-            default=[],
-            type='string',
-            dest='import_policy_overrides',
+            '--allow-from-module',
+            default='',
+            dest='allow_from_module',
             parse_from_config=True,
-            help=(
-                "Override default behavior for specific modules. "
-                "Format `module-<allow:forbid>-policy`, e.g. `typing-allow-from-module`"
-                " `django_rest_framework-forbid-absolute`"
-            ),
+            comma_separated_list=True,
+            help="List of modules to always allow `from module import ...`",
+        )
+        parser.add_option(
+            '--forbid-from-module',
+            default='',
+            dest='forbid_from_module',
+            parse_from_config=True,
+            comma_separated_list=True,
+            help="List of modules to always forbid `from module import ...`",
+        )
+        parser.add_option(
+            '--allow-absolute',
+            default='',
+            dest='allow_absolute',
+            parse_from_config=True,
+            comma_separated_list=True,
+            help="List of modules to always allow `import module.something`",
+        )
+        parser.add_option(
+            '--forbid-absolute',
+            default='',
+            dest='forbid_absolute',
+            parse_from_config=True,
+            comma_separated_list=True,
+            help="List of modules to always forbid `import module.something`",
         )
         parser.add_option(
             '--init-must-follow-import-policy',
@@ -151,19 +170,31 @@ class Plugin:
 
     @classmethod
     def parse_options(cls, options: flake8.options.manager.OptionManager) -> None:
+        allow_from_module = set(options.allow_from_module)
+        forbid_from_module = set(options.forbid_from_module)
+        if allowed_and_forbidden := allow_from_module & forbid_from_module:
+            raise ValueError(
+                f"Can't simultaniously allow and forbid "
+                f"from_module import for: {allowed_and_forbidden}"
+            )
+        allow_absolute = set(options.allow_absolute)
+        forbid_absolute = set(options.forbid_absolute)
+        if allowed_and_forbidden := allow_absolute & forbid_absolute:
+            raise ValueError(
+                f"Can't simultaniously allow and forbid "
+                f"absolute import for: {allowed_and_forbidden}"
+            )
         overrides: collections.defaultdict[
             str, config.Override
         ] = collections.defaultdict(config.Override)
-        for override in options.import_policy_overrides:
-            parts = override.split('-')
-            module = parts[0]
-            action = parts[1]
-            policy = '_'.join(parts[2:])
-
-            assert action in ('allow', 'forbid')
-            overrides[module] = overrides[module].evolve(
-                {f'allow_{policy}': action == 'allow'}
-            )
+        for module in allow_from_module:
+            overrides[module] = overrides[module].evolve(allow_from_module=True)
+        for module in forbid_from_module:
+            overrides[module] = overrides[module].evolve(allow_from_module=False)
+        for module in allow_absolute:
+            overrides[module] = overrides[module].evolve(allow_absolute=True)
+        for module in forbid_absolute:
+            overrides[module] = overrides[module].evolve(allow_absolute=False)
 
         registered_aliases: dict[str, str] = {}
         for raw_alias in options.registered_import_aliases:

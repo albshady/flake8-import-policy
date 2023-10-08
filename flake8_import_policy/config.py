@@ -20,7 +20,7 @@ class Override(typing.NamedTuple):
     def omit_nones(self) -> dict[str, bool]:
         return {k: v for k, v in self._asdict().items() if v is not None}
 
-    def evolve(self, update: typing.Mapping[str, bool]) -> Override:
+    def evolve(self, **update: bool) -> Override:
         return Override(**{**self.omit_nones(), **update})
 
     def __or__(self, source_config: SourceConfig) -> SourceConfig:
