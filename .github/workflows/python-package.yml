@@ -31,7 +31,7 @@ jobs:
         poetry install
     - name: Lint with pre-commit
       run: |
-        poetry run pre-commit -a flake8_import_policy
+        poetry run pre-commit run -a flake8_import_policy
     - name: Test with pytest
       run: |
-        pytest -vvv tests
+        poetry run pytest -vvv tests
